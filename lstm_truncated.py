@@ -11,11 +11,11 @@ import threading
 import matplotlib.pyplot as plt
 
 class LSTM_net(nn.Module):
-    def __init__(self, corpus_max):
+    def __init__(self, id_max):
         super(LSTM_net, self).__init__()
-        self.embed = nn.Embedding(corpus_max, int(corpus_max/3))
-        self.lstm = nn.LSTM(input_size=int(corpus_max/3), hidden_size=int(corpus_max/6), batch_first=True)
-        self.out = nn.Linear(int(corpus_max/6), corpus_max)
+        self.embed = nn.Embedding(id_max, int(id_max/3))
+        self.lstm = nn.LSTM(input_size=int(id_max/3), hidden_size=int(id_max/6), batch_first=True)
+        self.out = nn.Linear(int(id_max/6), id_max)
         self.hidden_cell = None
 
     def init_hidden_cell(self):
@@ -42,23 +42,22 @@ class Loss_function(nn.Module):
 
 class Convert_char():
     def __init__(self):
-        self.char2id = {}
-        self.id2char = {}
-        self.corpus = None
-        self.corpus_onehot = None
+        self.char2id_corpus = {}
+        self.id2char_corpus = {}
+        self.id_sentence = None
 
     def make_char_id(self, sentence):
         for char in sentence:
-            if char not in self.char2id:
-                new_id = len(self.char2id)
-                self.char2id[char] = new_id
-                self.id2char[new_id] = char
-        return self.char2id, self.id2char
+            if char not in self.char2id_corpus:
+                new_id = len(self.char2id_corpus)
+                self.char2id_corpus[char] = new_id
+                self.id2char_corpus[new_id] = char
+        return self.char2id_corpus, self.id2char_corpus
     
-    def convert_corpus(self, sentence):
+    def convert_id(self, sentence):
         char2id, id2char = self.make_char_id(sentence)
-        self.corpus = np.array([char2id[c] for c in sentence])
-        return self.corpus
+        self.id_sentence = np.array([char2id[c] for c in sentence])
+        return self.id_sentence
 
 class Util():   
     def get_sentence(self, txt_path, start=False, end=False):
@@ -75,13 +74,13 @@ class Util():
             sentence += "_" #EOSの追加
         return sentence
 
-    def make_batch(self, corpus, seq_len, batchsize=5):
+    def make_batch(self, id_sentence, seq_len, batchsize=5):
         train_data = []
         label_data = []
         for i in range(batchsize):
-            start = random.randint(0, len(corpus)-seq_len-1)
-            train_batch = corpus[start:start+seq_len]
-            label_batch = corpus[start+1:start+seq_len+1]
+            start = random.randint(0, len(id_sentence)-seq_len-1)
+            train_batch = id_sentence[start:start+seq_len]
+            label_batch = id_sentence[start+1:start+seq_len+1]
 
             train_data.append(train_batch)
             label_data.append(label_batch)
@@ -98,11 +97,12 @@ def main():
     convert = Convert_char()
 
     sentence = util.get_sentence(txt_path, start=True, end=True)
-    corpus = convert.convert_corpus(sentence)
-    print(convert.char2id)
+    id_sentence = convert.convert_id(sentence)
+    print(convert.char2id_corpus)
+    print("sentence_len : ", len(sentence))
 
     
-    model = LSTM_net(corpus_max=corpus.max()+1)
+    model = LSTM_net(id_max=id_sentence.max()+1)
     opt = optim.Adam(model.parameters())
     loss_function = Loss_function()
     
@@ -114,7 +114,7 @@ def main():
     loss_plot = []
     while True:
         seq_len = 256 #学習で切り取る長さ
-        train_data, label_data = util.make_batch(corpus, seq_len, batch_size)
+        train_data, label_data = util.make_batch(id_sentence, seq_len, batch_size)
         train_data = torch.tensor(train_data, dtype=torch.int64)
         label_data = torch.tensor(label_data, dtype=torch.int64)
         
@@ -150,16 +150,17 @@ def main():
         if gen_flag:
             print("\n=================generate=====================\n")
             #test
-            index = random.randint(0, corpus.max()-1)
+            index = random.randint(0, id_sentence.max()-1)
+            
             gen_sentence = [index]
-            print(convert.id2char[index], end="")
+            print(convert.id2char_corpus[index], end="")
             for c in range(700):
                 now_input = np.array(gen_sentence)
                 now_input = torch.tensor(now_input[np.newaxis], dtype=torch.int64)
                 out = F.softmax(model(now_input, t_bptt=True), dim=1).data.numpy()[0]
                 next_index = int(np.random.choice(len(out), size=1, p=out)[0]) #ランダムにサンプリング
                 #next_index = int(out.argmax()) #最大確率をサンプリング
-                print(convert.id2char[next_index], end="")
+                print(convert.id2char_corpus[next_index], end="")
                 if((c+2)%100==0):
                     print("")
                 gen_sentence = [next_index]
